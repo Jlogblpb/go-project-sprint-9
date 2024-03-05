@@ -31,16 +31,15 @@ func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 }
 
 // Worker читает число из канала in и пишет его в канал out.
-func Worker(in <-chan int64, out chan<- int64, done func()) {
+func Worker(in <-chan int64, out chan<- int64) {
 	// 2. Функция Worker
-	defer done()
+	defer close(out)
 	for v := range in {
 		//Пишем в канал out
 		out <- v
 		//пауза на 1 млсек
 		time.Sleep(1 * time.Millisecond)
 	}
-	defer close(out)
 }
 
 func main() {
@@ -67,7 +66,7 @@ func main() {
 	for i := 0; i < NumOut; i++ {
 		// создаём каналы и для каждого из них вызываем горутину Worker
 		outs[i] = make(chan int64)
-		go Worker(chIn, outs[i], func() {})
+		go Worker(chIn, outs[i])
 	}
 
 	// amounts — слайс, в который собирается статистика по горутинам
@@ -83,7 +82,8 @@ func main() {
 		go func(in <-chan int64, i int64) {
 			defer wg.Done()
 			for v := range in {
-				atomic.AddInt64(&amounts[i], 1)
+				//atomic.AddInt64(&amounts[i], 1)
+				amounts[i] += 1
 				chOut <- v
 			}
 		}(out, int64(i))
@@ -115,7 +115,7 @@ func main() {
 		log.Fatalf("Ошибка: количество чисел не равно: %d != %d\n", inputCount.Load(), count)
 	}
 	for _, v := range amounts {
-		inputCount.Add(-1 * v)
+		inputCount.Add(-v)
 	}
 	if inputCount.Load() != 0 {
 		log.Fatalf("Ошибка: разделение чисел по каналам неверное\n")
