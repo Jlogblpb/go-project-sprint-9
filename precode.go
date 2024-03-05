@@ -15,36 +15,32 @@ import (
 // сгенерированных чисел.
 func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 	// 1. Функция Generator
-	var count atomic.Int64
-	count.Store(1)
+	var count int64
+	count = 1
 	for {
 		select {
 		case <-ctx.Done():
 			close(ch)
 			return
 		default:
-			count.Add(1)
-			ch <- count.Load()
-			fn(count.Load())
+			ch <- count
+			fn(count)
+			count++
 		}
 	}
 }
 
 // Worker читает число из канала in и пишет его в канал out.
-func Worker(in <-chan int64, out chan<- int64) {
+func Worker(in <-chan int64, out chan<- int64, done func()) {
 	// 2. Функция Worker
-	for {
-		v, ok := <-in
-		if !ok {
-			//Закрыть канал и выйти
-			close(out)
-			return
-		}
+	defer done()
+	for v := range in {
 		//Пишем в канал out
 		out <- v
 		//пауза на 1 млсек
 		time.Sleep(1 * time.Millisecond)
 	}
+	defer close(out)
 }
 
 func main() {
@@ -71,7 +67,7 @@ func main() {
 	for i := 0; i < NumOut; i++ {
 		// создаём каналы и для каждого из них вызываем горутину Worker
 		outs[i] = make(chan int64)
-		go Worker(chIn, outs[i])
+		go Worker(chIn, outs[i], func() {})
 	}
 
 	// amounts — слайс, в который собирается статистика по горутинам
@@ -82,33 +78,20 @@ func main() {
 	var wg sync.WaitGroup
 
 	// 4. Собираем числа из каналов outs
-	var i int64
-	for i = 0; i < int64(len(outs)); i++ {
+	for i, out := range outs {
 		wg.Add(1)
 		go func(in <-chan int64, i int64) {
 			defer wg.Done()
-			amounts[i]++
-		}(outs[i], i)
+			for v := range in {
+				atomic.AddInt64(&amounts[i], 1)
+				chOut <- v
+			}
+		}(out, int64(i))
 	}
-
-	// var i int64
-	// i = -1
-	// for {
-	// 	wg.Add(1)
-	// 	i++
-	// 	go func(in <-chan int64, i int64) {
-	// 		defer wg.Done()
-	// 		//amounts[i]++
-	// 		v := <-in
-	// 		chOut <- v
-	// 		// ждём завершения работы всех горутин для outs
-	// 		wg.Wait()
-	// 		// закрываем результирующий канал
-	// 		close(chOut)
-	// 	}(outs[i], i)
-	// }
-
-	//Переделать эту функцию на atomic
+	go func() {
+		wg.Wait()
+		close(chOut)
+	}()
 
 	var count int64 // количество чисел результирующего канала
 	var sum int64   // сумма чисел результирующего канала
@@ -117,7 +100,7 @@ func main() {
 
 	for v := range chOut {
 		count++
-		sum = +v
+		sum += v
 	}
 
 	fmt.Println("Количество чисел", inputCount.Load(), count)
