@@ -83,21 +83,32 @@ func main() {
 
 	// 4. Собираем числа из каналов outs
 	var i int64
-	i = 0
-	for {
+	for i = 0; i < int64(len(outs)); i++ {
 		wg.Add(1)
-		i++
 		go func(in <-chan int64, i int64) {
 			defer wg.Done()
 			amounts[i]++
-			v := <-in
-			chOut <- v
-			// ждём завершения работы всех горутин для outs
-			wg.Wait()
-			// закрываем результирующий канал
-			close(chOut)
 		}(outs[i], i)
-	} //Переделать эту функцию на atomic
+	}
+
+	// var i int64
+	// i = -1
+	// for {
+	// 	wg.Add(1)
+	// 	i++
+	// 	go func(in <-chan int64, i int64) {
+	// 		defer wg.Done()
+	// 		//amounts[i]++
+	// 		v := <-in
+	// 		chOut <- v
+	// 		// ждём завершения работы всех горутин для outs
+	// 		wg.Wait()
+	// 		// закрываем результирующий канал
+	// 		close(chOut)
+	// 	}(outs[i], i)
+	// }
+
+	//Переделать эту функцию на atomic
 
 	var count int64 // количество чисел результирующего канала
 	var sum int64   // сумма чисел результирующего канала
